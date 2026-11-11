@@ -1,0 +1,27 @@
+# .NET build and IDE output
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+
+# Angular and npm output
+node_modules/
+.angular/
+dist/
+
+# Local configuration and application data
+.env
+.env.*
+!.env.example
+*.db
+*.db-shm
+*.db-wal
+
+# Test and coverage output
+TestResults/
+coverage/
+
+# OS files
+Thumbs.db
+.DS_Store
