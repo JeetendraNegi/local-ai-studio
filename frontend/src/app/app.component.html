@@ -1,0 +1,221 @@
+<div class="shell">
+  <aside>
+    <div class="brand">
+      <b>✦</b><span>Local AI Studio<small>PRIVATE AI WORKSPACE</small></span>
+    </div>
+    <label>WORKSPACE</label
+    ><button (click)="page = 'chat'" [class.active]="page === 'chat'">
+      ◉　Chat</button
+    ><button (click)="page = 'code'" [class.active]="page === 'code'">
+      ⌘　Code Studio</button
+    ><button
+      (click)="page = 'analysis'; mode = 'analysis'"
+      [class.active]="page === 'analysis'"
+    >
+      ⌕　AI Analysis</button
+    ><label>MANAGEMENT</label
+    ><button (click)="page = 'models'" [class.active]="page === 'models'">
+      ▦　Models <em>{{ models.length }}</em></button
+    ><button (click)="page = 'dashboard'" [class.active]="page === 'dashboard'">
+      ▤　Dashboard</button
+    ><label>RECENT CHATS</label
+    ><button class="history" *ngFor="let c of chats" (click)="open(c)">
+      {{ c.title }}
+    </button>
+    <footer>
+      <i [class.off]="health !== 'connected'"></i> Ollama {{ health }}
+    </footer>
+  </aside>
+  <main>
+    <header>
+      <span
+        >Local AI Studio　/　<strong>{{ page }}</strong></span
+      >
+      <div>
+        <select [(ngModel)]="model">
+          <option value="">Select model</option>
+          <option *ngFor="let m of models" [value]="m.name">
+            {{ m.name }}
+          </option></select
+        ><small>{{ isRunning(model) ? "● Running" : "○ Not loaded" }}</small>
+      </div>
+    </header>
+    <div class="notice" *ngIf="notice">
+      {{ notice }} <button (click)="notice = ''">×</button>
+    </div>
+    <section *ngIf="page === 'dashboard'">
+      <h1>Welcome to your AI workspace</h1>
+      <p>Manage local models and work with private AI.</p>
+      <div class="cards">
+        <article>
+          <small>OLLAMA</small>
+          <h2>{{ health }}</h2>
+        </article>
+        <article>
+          <small>INSTALLED MODELS</small>
+          <h2>{{ models.length }}</h2>
+        </article>
+        <article>
+          <small>RUNNING MODELS</small>
+          <h2>{{ running.length }}</h2>
+        </article>
+        <article>
+          <small>CONVERSATIONS</small>
+          <h2>{{ chats.length }}</h2>
+        </article>
+      </div>
+      <button class="primary" (click)="page = 'models'">Manage models</button>
+    </section>
+    <section *ngIf="page === 'models'">
+      <h1>Models</h1>
+      <p>Installed models in your local Ollama runtime.</p>
+      <button class="secondary" (click)="refresh()">↻ Refresh</button>
+      <article class="model" *ngFor="let m of models">
+        <div>
+          <b>◈　{{ m.name }}</b
+          ><small
+            >{{ m.details?.parameter_size }} ·
+            {{ m.details?.quantization_level }} ·
+            {{ (m.size / 1073741824).toFixed(2) }} GB</small
+          >
+        </div>
+        <span [class.green]="isRunning(m.name)">{{
+          isRunning(m.name) ? "● Running" : "○ Stopped"
+        }}</span
+        ><button
+          class="primary"
+          *ngIf="!isRunning(m.name)"
+          (click)="load(m.name)"
+        >
+          Load</button
+        ><button
+          class="secondary"
+          *ngIf="isRunning(m.name)"
+          (click)="stop(m.name)"
+        >
+          Stop
+        </button>
+      </article>
+      <article>
+        <b>Download a model</b>
+        <p>Example: qwen3:8b or qwen2.5-coder:7b</p>
+        <input #pullName placeholder="model:tag" /><button
+          class="primary"
+          (click)="pull(pullName.value)"
+        >
+          Show pull command
+        </button>
+      </article>
+    </section>
+    <section class="chat" *ngIf="page === 'chat' || page === 'analysis'">
+      <div class="heading">
+        <div>
+          <h1>{{ page === "analysis" ? "AI Analysis" : "Chat" }}</h1>
+          <p>Talk privately with your local model.</p>
+        </div>
+        <button class="secondary" (click)="newChat()">＋ New chat</button>
+      </div>
+      <div class="messages">
+        <div class="welcome" *ngIf="!messages.length">
+          <b>✦</b>
+          <h2>What would you like to explore?</h2>
+          <p>Your prompts are processed by your local model.</p>
+          <button
+            class="secondary"
+            (click)="prompt = 'Explain how MCP works for AI agents.'"
+          >
+            Explain MCP
+          </button>
+          <button
+            class="secondary"
+            (click)="prompt = 'Design a .NET 8 microservice.'"
+          >
+            Design a .NET service
+          </button>
+        </div>
+        <div class="msg" *ngFor="let m of messages">
+          <small>{{ m.role === "user" ? "YOU" : "LOCAL AI" }}</small>
+          <pre>{{ m.content }}</pre>
+          <button
+            class="tiny"
+            *ngIf="m.role === 'assistant' && m.content.includes('```')"
+            (click)="extract(m.content); page = 'code'"
+          >
+            Open code in Studio ↗
+          </button>
+        </div>
+      </div>
+      <div class="composer">
+        <textarea
+          [(ngModel)]="prompt"
+          placeholder="Message your local AI..."
+          (keydown.enter)="onEnter($event)"
+        ></textarea>
+        <div>
+          <small>{{ model || "Select a model" }} · Local inference</small
+          ><button class="secondary" *ngIf="busy" (click)="stopGeneration()">
+            Stop</button
+          ><button class="primary" [disabled]="busy || !model" (click)="send()">
+            Send ↑
+          </button>
+        </div>
+      </div>
+    </section>
+    <section *ngIf="page === 'code'">
+      <h1>Code Studio</h1>
+      <p>Generate code from natural-language requirements.</p>
+      <div class="codegrid">
+        <article>
+          <b>Describe what to build</b><label>Language</label
+          ><select [(ngModel)]="language">
+            <option value="csharp">C#</option>
+            <option value="typescript">TypeScript</option>
+            <option value="python">Python</option>
+            <option value="sql">SQL</option>
+            <option value="dart">Dart / Flutter</option></select
+          ><label>Requirements</label
+          ><textarea
+            [(ngModel)]="codePrompt"
+            placeholder="Create an ASP.NET Core health endpoint..."
+          ></textarea
+          ><button
+            class="primary"
+            [disabled]="!model || busy"
+            (click)="generate()"
+          >
+            Generate with {{ model || "model" }}
+          </button>
+        </article>
+        <article class="editor">
+          <div>
+            <b>Generated code</b
+            ><button class="tiny" (click)="copy()" [disabled]="!code">
+              Copy</button
+            ><button class="tiny" (click)="download()" [disabled]="!code">
+              Download
+            </button>
+          </div>
+          <textarea
+            [(ngModel)]="code"
+            spellcheck="false"
+            placeholder="Code output will appear here. Extract a fenced block from chat or generate code."
+          ></textarea>
+        </article>
+      </div>
+      <article class="responses" *ngIf="messages.length">
+        <b>Generation conversation</b>
+        <div class="msg" *ngFor="let m of messages">
+          <small>{{ m.role }}</small>
+          <pre>{{ m.content }}</pre>
+          <button
+            class="tiny"
+            *ngIf="m.role === 'assistant'"
+            (click)="extract(m.content)"
+          >
+            Extract code block
+          </button>
+        </div>
+      </article>
+    </section>
+  </main>
+</div>
