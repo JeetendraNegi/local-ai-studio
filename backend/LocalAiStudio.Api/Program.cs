@@ -67,6 +67,8 @@
 
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Mvc;
+using System.Net;
 using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -75,6 +77,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<StudioDb>(options =>
     options.UseSqlite(
         builder.Configuration.GetConnectionString("Studio")));
+builder.Services.AddSingleton<WorkspaceService>();
 
 // Ollama HTTP client
 builder.Services.AddHttpClient("ollama", client =>
@@ -114,6 +117,123 @@ HttpClient Ollama(HttpContext context) =>
     context.RequestServices
         .GetRequiredService<IHttpClientFactory>()
         .CreateClient("ollama");
+
+var workspaceApi = app.MapGroup("/api/workspaces");
+workspaceApi.AddEndpointFilter(async (context, next) =>
+{
+    try
+    {
+        return await next(context);
+    }
+    catch (WorkspaceException exception)
+    {
+        return Results.Problem(
+            statusCode: exception.StatusCode,
+            title: "Workspace request failed",
+            detail: exception.Message);
+    }
+});
+
+workspaceApi.MapGet("", (WorkspaceService workspaces) =>
+    Results.Ok(workspaces.ListWorkspaces()));
+
+workspaceApi.MapPost("", (CreateWorkspaceRequest request, WorkspaceService workspaces) =>
+    Results.Ok(workspaces.CreateWorkspace(request.Name, request.Location)));
+
+workspaceApi.MapGet("/browse", (
+    string? path,
+    HttpContext context,
+    WorkspaceService workspaces) =>
+{
+    if (context.Connection.RemoteIpAddress is not { } address ||
+        !IPAddress.IsLoopback(address))
+    {
+        return Results.Problem(
+            statusCode: StatusCodes.Status403Forbidden,
+            title: "Folder browsing is available only from this machine.");
+    }
+
+    return Results.Ok(workspaces.BrowseDirectories(path));
+});
+
+workspaceApi.MapGet("/{workspace}/files", (
+    string workspace,
+    string? path,
+    WorkspaceService workspaces) =>
+    Results.Ok(workspaces.ListEntries(workspace, path)));
+
+workspaceApi.MapGet("/{workspace}/files/content", async (
+    string workspace,
+    string? path,
+    WorkspaceService workspaces,
+    HttpContext context) =>
+    Results.Ok(await workspaces.ReadFileAsync(
+        workspace,
+        path,
+        context.RequestAborted)));
+
+workspaceApi.MapPost("/{workspace}/files", async (
+    string workspace,
+    CreateWorkspaceFileRequest request,
+    WorkspaceService workspaces,
+    HttpContext context) =>
+    Results.Ok(await workspaces.CreateFileAsync(
+        workspace,
+        request.Path,
+        request.Content,
+        context.RequestAborted)));
+
+workspaceApi.MapPost("/{workspace}/directories", (
+    string workspace,
+    CreateWorkspaceDirectoryRequest request,
+    WorkspaceService workspaces) =>
+    Results.Ok(workspaces.CreateDirectory(workspace, request.Path)));
+
+workspaceApi.MapPost("/{workspace}/files/rename", (
+    string workspace,
+    RenameWorkspaceEntryRequest request,
+    WorkspaceService workspaces) =>
+    Results.Ok(workspaces.Rename(
+        workspace,
+        request.Path,
+        request.NewName,
+        isDirectory: false)));
+
+workspaceApi.MapPost("/{workspace}/directories/rename", (
+    string workspace,
+    RenameWorkspaceEntryRequest request,
+    WorkspaceService workspaces) =>
+    Results.Ok(workspaces.Rename(
+        workspace,
+        request.Path,
+        request.NewName,
+        isDirectory: true)));
+
+workspaceApi.MapDelete("/{workspace}/files", (
+    string workspace,
+    [FromBody] DeleteWorkspaceEntryRequest request,
+    WorkspaceService workspaces) =>
+{
+    workspaces.Delete(
+        workspace,
+        request.Path,
+        isDirectory: false,
+        request.Confirmed);
+    return Results.NoContent();
+});
+
+workspaceApi.MapDelete("/{workspace}/directories", (
+    string workspace,
+    [FromBody] DeleteWorkspaceEntryRequest request,
+    WorkspaceService workspaces) =>
+{
+    workspaces.Delete(
+        workspace,
+        request.Path,
+        isDirectory: true,
+        request.Confirmed);
+    return Results.NoContent();
+});
 
 // Health check
 app.MapGet("/api/health", async (HttpContext context) =>

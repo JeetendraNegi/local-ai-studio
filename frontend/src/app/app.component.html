@@ -13,6 +13,8 @@
       [class.active]="page === 'analysis'"
     >
       ⌕　AI Analysis</button
+    ><button (click)="page = 'workspace'" [class.active]="page === 'workspace'">
+      ▣　Workspaces</button
     ><label>MANAGEMENT</label
     ><button (click)="page = 'models'" [class.active]="page === 'models'">
       ▦　Models <em>{{ models.length }}</em></button
@@ -216,6 +218,255 @@
           </button>
         </div>
       </article>
+    </section>
+    <section class="workspace-page" *ngIf="page === 'workspace'">
+      <div class="heading">
+        <div>
+          <h1>Workspaces</h1>
+          <p>Browse and manage files in your local projects.</p>
+        </div>
+        <button
+          class="secondary"
+          [disabled]="!activeWorkspace"
+          (click)="refreshWorkspace()"
+        >
+          ↻ Refresh
+        </button>
+      </div>
+
+      <div class="workspace-controls">
+        <label>
+          <span>Selected workspace</span>
+          <select
+            [ngModel]="activeWorkspace"
+            (ngModelChange)="selectWorkspace($event)"
+          >
+            <option value="">Select a workspace</option>
+            <option *ngFor="let workspace of workspaces" [value]="workspace.id">
+              {{ workspace.name }} — {{ workspace.path }}
+            </option>
+          </select>
+        </label>
+        <form (ngSubmit)="createWorkspace()">
+          <label>
+            <span>Create workspace</span>
+            <div class="workspace-input">
+              <input
+                name="newWorkspaceName"
+                [(ngModel)]="newWorkspaceName"
+                placeholder="Workspace name"
+              />
+            </div>
+            <span class="location-label">Parent folder (optional; defaults to configured location)</span>
+            <div class="workspace-input">
+              <input
+                class="location-input"
+                name="newWorkspaceLocation"
+                [(ngModel)]="newWorkspaceLocation"
+                placeholder="C:\Users\You\Projects"
+              />
+              <button
+                class="secondary browse-folder-button"
+                type="button"
+                (click)="openFolderBrowser()"
+              >
+                Browse…
+              </button>
+            </div>
+            <small class="location-help">Enter an existing absolute folder path. A new folder named after your workspace will be created inside it.</small>
+            <button class="primary create-workspace-button" type="submit" [disabled]="!newWorkspaceName.trim()">
+              Create workspace
+            </button>
+          </label>
+        </form>
+      </div>
+
+      <div class="workspace-controls" *ngIf="activeWorkspace">
+        <form (ngSubmit)="createWorkspaceFile()">
+          <label>
+            <span>New file (relative path)</span>
+            <div class="workspace-input">
+              <input
+                name="newFilePath"
+                [(ngModel)]="newFilePath"
+                placeholder="src/app/example.ts"
+              />
+              <button class="secondary" type="submit" [disabled]="!newFilePath.trim()">
+                Add file
+              </button>
+            </div>
+          </label>
+        </form>
+        <form (ngSubmit)="createWorkspaceDirectory()">
+          <label>
+            <span>New folder (relative path)</span>
+            <div class="workspace-input">
+              <input
+                name="newFolderPath"
+                [(ngModel)]="newFolderPath"
+                placeholder="src/components"
+              />
+              <button
+                class="secondary"
+                type="submit"
+                [disabled]="!newFolderPath.trim()"
+              >
+                Add folder
+              </button>
+            </div>
+          </label>
+        </form>
+      </div>
+
+      <div class="workspace-browser" *ngIf="activeWorkspace">
+        <div class="file-panel">
+          <div class="panel-title">
+            <b>{{ activeWorkspaceName }}</b>
+            <small>Folders and files</small>
+          </div>
+          <p class="empty-tree" *ngIf="!fileTree.length">
+            This workspace is empty.
+          </p>
+          <ul class="file-tree">
+            <ng-container
+              *ngTemplateOutlet="treeNodes; context: { $implicit: fileTree }"
+            ></ng-container>
+          </ul>
+        </div>
+
+        <div class="file-viewer">
+          <div class="panel-title">
+            <b>{{ selectedFilePath || "File preview" }}</b>
+            <small *ngIf="selectedFilePath">Read-only · 1 MB maximum</small>
+          </div>
+          <pre *ngIf="selectedFilePath; else chooseFile">{{ selectedFileContent }}</pre>
+          <ng-template #chooseFile>
+            <div class="file-placeholder">
+              Select a file to view its contents.
+            </div>
+          </ng-template>
+        </div>
+      </div>
+      <p class="workspace-help" *ngIf="!activeWorkspace">
+        Workspaces are available under the configured workspace root.
+      </p>
+
+      <div
+        class="folder-browser-backdrop"
+        *ngIf="folderBrowserOpen"
+        (click)="folderBrowserOpen = false"
+      >
+        <section
+          class="folder-browser-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="folder-browser-title"
+          (click)="$event.stopPropagation()"
+        >
+          <div class="folder-browser-header">
+            <div>
+              <h2 id="folder-browser-title">Choose parent folder</h2>
+              <p>Browse folders on the computer running Local AI Studio.</p>
+            </div>
+            <button
+              class="tree-action"
+              type="button"
+              aria-label="Close folder browser"
+              (click)="folderBrowserOpen = false"
+            >
+              Close
+            </button>
+          </div>
+          <div class="folder-browser-path">
+            <button
+              class="secondary"
+              type="button"
+              *ngIf="folderBrowserPath"
+              (click)="browseParentFolder(folderBrowserParentPath)"
+            >
+              {{ folderBrowserParentPath ? "↑ Up" : "← Drives" }}
+            </button>
+            <span>{{ folderBrowserPath || "This PC" }}</span>
+          </div>
+          <div class="folder-browser-list" *ngIf="!folderBrowserLoading">
+            <button
+              class="folder-browser-item"
+              type="button"
+              *ngFor="let directory of folderBrowserDirectories"
+              (click)="browseParentFolder(directory.path)"
+            >
+              <span>▰</span>
+              <span>{{ directory.name }}</span>
+              <small>Open</small>
+            </button>
+            <p class="empty-tree" *ngIf="!folderBrowserDirectories.length">
+              No subfolders found here.
+            </p>
+          </div>
+          <p class="folder-browser-loading" *ngIf="folderBrowserLoading">
+            Loading folders…
+          </p>
+          <div class="folder-browser-footer">
+            <button
+              class="secondary"
+              type="button"
+              (click)="folderBrowserOpen = false"
+            >
+              Cancel
+            </button>
+            <button
+              class="primary"
+              type="button"
+              [disabled]="!folderBrowserPath || folderBrowserLoading"
+              (click)="chooseParentFolder()"
+            >
+              Select this folder
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <ng-template #treeNodes let-nodes>
+        <li *ngFor="let entry of nodes">
+          <div class="tree-row" [class.selected]="selectedFilePath === entry.path">
+            <button
+              class="tree-name"
+              [title]="entry.path"
+              (click)="entry.isDirectory ? toggleDirectory(entry) : openWorkspaceFile(entry)"
+            >
+              <span class="tree-icon">{{
+                entry.isDirectory ? (entry.expanded ? "▾" : "▸") : "·"
+              }}</span>
+              <span class="tree-label">{{ entry.name }}</span>
+            </button>
+            <small class="change-indicator" *ngIf="hasChangeIndicator(entry.path)">
+              {{ changeIndicator(entry.path) }}
+            </small>
+            <button
+              class="tree-action"
+              title="Rename"
+              aria-label="Rename"
+              (click)="renameWorkspaceEntry(entry)"
+            >
+              Rename
+            </button>
+            <button
+              class="tree-action danger"
+              title="Delete"
+              aria-label="Delete"
+              (click)="deleteWorkspaceEntry(entry)"
+            >
+              Delete
+            </button>
+          </div>
+          <small class="tree-loading" *ngIf="entry.loading">Loading…</small>
+          <ul class="file-tree nested" *ngIf="entry.isDirectory && entry.expanded">
+            <ng-container
+              *ngTemplateOutlet="treeNodes; context: { $implicit: entry.children || [] }"
+            ></ng-container>
+          </ul>
+        </li>
+      </ng-template>
     </section>
   </main>
 </div>
